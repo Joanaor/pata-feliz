@@ -1,0 +1,831 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{pdflscape}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{listings}
+
+\usetikzlibrary{arrows.meta,positioning,shapes.multipart,fit,backgrounds}
+
+\definecolor{pataGreen}{HTML}{0F766E}
+\definecolor{pataDark}{HTML}{102A2A}
+\definecolor{pataBlue}{HTML}{2563EB}
+\definecolor{pataGray}{HTML}{F3F4F6}
+\definecolor{codeBg}{HTML}{F8FAFC}
+\definecolor{codeBorder}{HTML}{CBD5E1}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=pataGreen,
+  urlcolor=pataBlue,
+  citecolor=pataGreen
+}
+
+\lstdefinestyle{codigo}{
+  backgroundcolor=\color{codeBg},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{codeBorder},
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2
+}
+
+\lstdefinelanguage{JavaScript}{
+  keywords={const,let,var,function,async,await,return,if,else,try,catch,finally,require,module,await,new},
+  keywordstyle=\color{pataBlue}\bfseries,
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\color{gray},
+  stringstyle=\color{pataGreen},
+  morestring=[b]',
+  morestring=[b]"
+}
+
+\lstdefinelanguage{SQL}{
+  keywords={CREATE,OR,REPLACE,FUNCTION,RETURNS,TABLE,DECLARE,BEGIN,END,SELECT,FROM,JOIN,LEFT,WHERE,INSERT,INTO,VALUES,UPDATE,SET,DELETE,RETURNING,TRIGGER,AFTER,BEFORE,ON,FOR,EACH,ROW,STATEMENT,REFERENCES,PRIMARY,KEY,FOREIGN,NOT,NULL,DEFAULT,CHECK,UNIQUE,INDEX,VIEW,GROUP,BY,ORDER,LIMIT,CASE,WHEN,THEN,ELSE},
+  keywordstyle=\color{pataBlue}\bfseries,
+  sensitive=false,
+  comment=[l]{--},
+  commentstyle=\color{gray},
+  stringstyle=\color{pataGreen},
+  morestring=[b]'
+}
+
+\title{
+  \textbf{Sistema de Informação Pata Feliz}\\
+  \large Sistema Web para Clínica Veterinária com PostgreSQL
+}
+\author{
+  Grupo: \underline{\hspace{8cm}}\\
+  Disciplina: Banco de Dados II
+}
+\date{Diamantina -- MG\\2026}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+Este documento descreve o desenvolvimento do Sistema de Informação Pata Feliz, uma aplicação web para gestão de uma clínica veterinária. O sistema permite o cadastro e a manutenção de tutores, animais, veterinários, procedimentos, atendimentos, prontuários, bloqueios de agenda e lembretes automáticos. A aplicação foi construída com frontend em HTML, CSS e JavaScript, backend em Node.js/Express e banco de dados PostgreSQL. O trabalho atende aos requisitos da disciplina de Banco de Dados II, incluindo operações de inserção, seleção, atualização e remoção, uso de transações, consultas com junções, funções armazenadas com parâmetro, triggers e manipulação de múltiplas tabelas relacionais.
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+\section{Introdução}
+
+O Pata Feliz é um sistema web voltado ao atendimento de uma clínica veterinária. Inicialmente, o objetivo era permitir que a clínica visualizasse pacientes e consultas. Durante a evolução do projeto, o sistema foi ampliado para atender três perfis principais de usuário:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Administrador}: geralmente o dono ou secretário da clínica. Pode visualizar e editar praticamente todos os dados do sistema.
+  \item \textbf{Veterinário}: acompanha a própria agenda, confirma ou cancela atendimentos, visualiza informações do tutor e do animal, registra prontuários e altera valores adicionais quando necessário.
+  \item \textbf{Tutor/cliente}: cadastra seus animais, agenda atendimentos, acompanha status das consultas, visualiza prontuários permitidos e recebe lembretes de seus animais.
+\end{itemize}
+
+O sistema foi pensado para resolver problemas reais de agenda clínica, como evitar choque de horários do mesmo veterinário, respeitar horários de funcionamento, impedir agendamentos no passado e permitir bloqueio de datas em feriados, férias ou ausência de profissionais.
+
+\section{Objetivos do Sistema}
+
+\subsection{Objetivo Geral}
+
+Desenvolver um Sistema de Informação web para uma clínica veterinária, com persistência em banco de dados relacional, capaz de manipular dados por meio de operações SQL e funcionalidades integradas ao backend e frontend.
+
+\subsection{Objetivos Específicos}
+
+\begin{itemize}[leftmargin=*]
+  \item Controlar o acesso de administradores, veterinários e tutores por login e senha.
+  \item Cadastrar e editar clientes, animais, veterinários e procedimentos.
+  \item Registrar atendimentos com data, horário, veterinário, animal, procedimento, status e valores.
+  \item Impedir conflito de agenda para o mesmo veterinário.
+  \item Bloquear dias ou períodos de atendimento da clínica ou de um veterinário específico.
+  \item Registrar prontuários ligados ao atendimento e ao animal.
+  \item Gerar lembretes automáticos de consultas próximas, vacinas vencendo, vacinas vencidas e animais sem atendimento recente.
+  \item Permitir relatórios e consultas usando junções e funções armazenadas no PostgreSQL.
+\end{itemize}
+
+\section{Tecnologias Utilizadas}
+
+\begin{longtable}{>{\bfseries}p{4cm}p{10cm}}
+\toprule
+Camada & Tecnologia \\
+\midrule
+Frontend & HTML, CSS e JavaScript puro, com aplicação de página única em \texttt{frontend/js/app.js}. \\
+Backend & Node.js com Express, concentrando a API principal em \texttt{backend/routes/v2.js}. \\
+Banco de dados & PostgreSQL, banco \texttt{pata\_feliz\_v2}. \\
+Autenticação & JWT para sessão do usuário e \texttt{bcryptjs} para hash de senha. \\
+Conexão com banco & Biblioteca \texttt{pg}, configurada no arquivo \texttt{backend/db.js}. \\
+Hospedagem de teste & Execução local, com frontend em \texttt{http://127.0.0.1:5500/frontend/index.html} e backend em \texttt{http://localhost:3000}. \\
+\bottomrule
+\end{longtable}
+
+\section{Requisitos Funcionais}
+
+\begin{longtable}{p{2.5cm}p{11.5cm}}
+\toprule
+\textbf{Código} & \textbf{Descrição} \\
+\midrule
+RF01 & O sistema deve permitir login por e-mail ou CPF e senha. \\
+RF02 & O sistema deve diferenciar permissões de administrador, veterinário e tutor. \\
+RF03 & O administrador deve cadastrar e editar clientes, animais, veterinários e procedimentos. \\
+RF04 & O tutor deve cadastrar seus animais e agendar atendimentos. \\
+RF05 & O veterinário deve visualizar sua agenda e acessar os dados do animal e do tutor. \\
+RF06 & O sistema deve registrar prontuários vinculados ao atendimento, animal e veterinário. \\
+RF07 & O tutor deve visualizar os prontuários marcados como visíveis para cliente. \\
+RF08 & O sistema deve controlar valores de procedimentos e valores adicionais em atendimentos. \\
+RF09 & O sistema deve impedir agendamentos em horários inválidos, no passado, aos domingos ou com mais de um ano de antecedência. \\
+RF10 & O sistema deve impedir choque de atendimentos para o mesmo veterinário. \\
+RF11 & O administrador deve bloquear a agenda da clínica inteira ou de veterinários específicos. \\
+RF12 & O sistema deve gerar lembretes automáticos para consultas, vacinas e animais sem atendimento recente. \\
+RF13 & O sistema deve permitir relatórios de procedimentos, veterinários e histórico do animal. \\
+\bottomrule
+\end{longtable}
+
+\section{Arquitetura da Aplicação}
+
+A aplicação é organizada em três camadas:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Frontend}: responsável pelas telas, formulários, calendário, modais, filtros e chamadas HTTP para a API.
+  \item \textbf{Backend}: responsável pelas regras de negócio, autenticação, autorização e chamadas SQL.
+  \item \textbf{Banco de dados}: responsável pelo armazenamento relacional, integridade dos dados, funções armazenadas, triggers, views e restrições.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, fill=pataGray, minimum width=4cm, minimum height=1.2cm, align=center},
+  arrow/.style={-{Latex[length=3mm]}, thick}
+]
+\node[box] (front) {Frontend\\HTML, CSS, JavaScript};
+\node[box, right=1.7cm of front] (api) {Backend\\Node.js + Express};
+\node[box, right=1.7cm of api] (db) {PostgreSQL\\Tabelas, Views, Functions, Triggers};
+\draw[arrow] (front) -- node[above]{HTTP/JSON} (api);
+\draw[arrow] (api) -- node[above]{SQL} (db);
+\draw[arrow] (db) -- node[below]{Registros} (api);
+\draw[arrow] (api) -- node[below]{JSON} (front);
+\end{tikzpicture}
+\caption{Arquitetura geral da aplicação}
+\end{figure}
+
+\section{Modelo do Banco de Dados}
+
+O banco de dados é relacional e possui mais de uma estrutura de armazenamento, atendendo ao requisito obrigatório do trabalho. As principais tabelas são:
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{usuarios}: armazena dados de autenticação e tipo do usuário.
+  \item \texttt{clientes}: dados específicos dos tutores.
+  \item \texttt{veterinarios}: dados específicos dos veterinários.
+  \item \texttt{animais}: animais vinculados aos tutores.
+  \item \texttt{procedimentos}: serviços da clínica, duração e preço base.
+  \item \texttt{atendimentos}: consultas, vacinas, cirurgias e outros atendimentos agendados.
+  \item \texttt{prontuarios}: registros clínicos vinculados aos atendimentos.
+  \item \texttt{vacinas\_aplicadas}: histórico de vacinas e próximas doses.
+  \item \texttt{lembretes}: alertas e notificações do sistema.
+  \item \texttt{bloqueios\_agenda}: períodos indisponíveis para a clínica ou veterinários.
+\end{itemize}
+
+\subsection{Diagrama Visual do Banco}
+
+\begin{landscape}
+\begin{figure}[H]
+\centering
+\resizebox{1.25\textwidth}{!}{
+\begin{tikzpicture}[
+  entity/.style={
+    draw,
+    rectangle split,
+    rectangle split parts=2,
+    rounded corners,
+    fill=white,
+    text width=4.1cm,
+    align=left,
+    font=\small
+  },
+  group/.style={draw, rounded corners, dashed, inner sep=0.35cm},
+  rel/.style={-{Latex[length=2.5mm]}, thick, color=pataDark},
+  note/.style={font=\scriptsize, fill=white, inner sep=1pt}
+]
+
+\node[entity] (usuarios) {
+  \textbf{usuarios}
+  \nodepart{second}
+  PK id\_usuario\\
+  nome, email, cpf\\
+  senha\_hash\\
+  tipo\_usuario
+};
+
+\node[entity, below left=1.2cm and 0.2cm of usuarios] (clientes) {
+  \textbf{clientes}
+  \nodepart{second}
+  PK id\_cliente\\
+  FK id\_usuario\\
+  telefone, endereço\\
+  observações
+};
+
+\node[entity, below right=1.2cm and 0.2cm of usuarios] (veterinarios) {
+  \textbf{veterinarios}
+  \nodepart{second}
+  PK id\_veterinario\\
+  FK id\_usuario\\
+  crmv, especialidade\\
+  telefone, ativo
+};
+
+\node[entity, below=1.6cm of clientes] (animais) {
+  \textbf{animais}
+  \nodepart{second}
+  PK id\_animal\\
+  FK id\_cliente\\
+  nome, espécie, raça\\
+  cor, sexo, peso
+};
+
+\node[entity, right=1.5cm of animais] (atendimentos) {
+  \textbf{atendimentos}
+  \nodepart{second}
+  PK id\_atendimento\\
+  FK animal, cliente\\
+  FK veterinário\\
+  FK procedimento\\
+  início, fim, status\\
+  valor\_base, adicional
+};
+
+\node[entity, right=1.5cm of atendimentos] (procedimentos) {
+  \textbf{procedimentos}
+  \nodepart{second}
+  PK id\_procedimento\\
+  nome, tipo\\
+  duração padrão\\
+  preço base
+};
+
+\node[entity, below=1.4cm of atendimentos] (prontuarios) {
+  \textbf{prontuarios}
+  \nodepart{second}
+  PK id\_prontuario\\
+  FK atendimento\\
+  FK animal\\
+  FK veterinário\\
+  diagnóstico, prescrição
+};
+
+\node[entity, below=1.4cm of animais] (vacinas) {
+  \textbf{vacinas\_aplicadas}
+  \nodepart{second}
+  PK id\_vacina\\
+  FK animal\\
+  FK atendimento\\
+  FK procedimento\\
+  próxima dose
+};
+
+\node[entity, below=1.4cm of procedimentos] (esquemas) {
+  \textbf{esquemas\_vacinais}
+  \nodepart{second}
+  PK id\_esquema\\
+  nome, espécie\\
+  descrição
+};
+
+\node[entity, below=1.4cm of esquemas] (etapas) {
+  \textbf{etapas\_esquema}
+  \nodepart{second}
+  PK id\_etapa\\
+  FK esquema\\
+  FK procedimento\\
+  intervalo, repetição
+};
+
+\node[entity, below=1.4cm of prontuarios] (lembretes) {
+  \textbf{lembretes}
+  \nodepart{second}
+  PK id\_lembrete\\
+  FK animal, cliente\\
+  FK atendimento\\
+  tipo, prioridade\\
+  status, data prevista
+};
+
+\node[entity, right=1.5cm of veterinarios] (bloqueios) {
+  \textbf{bloqueios\_agenda}
+  \nodepart{second}
+  PK id\_bloqueio\\
+  FK veterinário opcional\\
+  início, fim\\
+  motivo, criado\_por
+};
+
+\node[entity, above=1.2cm of procedimentos] (precos) {
+  \textbf{histórico\_preços}
+  \nodepart{second}
+  PK id\_histórico\\
+  FK procedimento\\
+  preço anterior/novo\\
+  alterado\_por
+};
+
+\node[entity, below=1.4cm of clientes] (pesos) {
+  \textbf{histórico\_pesos}
+  \nodepart{second}
+  PK id\_peso\\
+  FK animal\\
+  FK veterinário\\
+  peso, data
+};
+
+\draw[rel] (clientes) -- node[note]{1:1} (usuarios);
+\draw[rel] (veterinarios) -- node[note]{1:1} (usuarios);
+\draw[rel] (animais) -- node[note]{N:1} (clientes);
+\draw[rel] (atendimentos) -- node[note]{N:1} (animais);
+\draw[rel] (atendimentos) -- node[note]{N:1} (clientes);
+\draw[rel] (atendimentos) -- node[note]{N:1} (veterinarios);
+\draw[rel] (atendimentos) -- node[note]{N:1} (procedimentos);
+\draw[rel] (prontuarios) -- node[note]{1:1} (atendimentos);
+\draw[rel] (prontuarios) -- node[note]{N:1} (animais);
+\draw[rel] (vacinas) -- node[note]{N:1} (animais);
+\draw[rel] (vacinas) -- node[note]{N:1} (atendimentos);
+\draw[rel] (vacinas) -- node[note]{N:1} (procedimentos);
+\draw[rel] (etapas) -- node[note]{N:1} (esquemas);
+\draw[rel] (etapas) -- node[note]{N:1} (procedimentos);
+\draw[rel] (lembretes) -- node[note]{N:1} (animais);
+\draw[rel] (lembretes) -- node[note]{N:1} (clientes);
+\draw[rel] (lembretes) -- node[note]{N:1} (atendimentos);
+\draw[rel] (bloqueios) -- node[note]{N:1 opcional} (veterinarios);
+\draw[rel] (precos) -- node[note]{N:1} (procedimentos);
+\draw[rel] (pesos) -- node[note]{N:1} (animais);
+\draw[rel] (pesos) -- node[note]{N:1} (veterinarios);
+
+\end{tikzpicture}
+}
+\caption{Diagrama entidade-relacionamento resumido do sistema Pata Feliz}
+\end{figure}
+\end{landscape}
+
+\subsection{Restrições Importantes}
+
+O banco não armazena apenas dados; ele também protege regras importantes do sistema.
+
+\begin{itemize}[leftmargin=*]
+  \item A tabela \texttt{usuarios} exige e-mail ou CPF por meio de \texttt{CHECK}.
+  \item A tabela \texttt{procedimentos} exige duração maior que zero e preço não negativo.
+  \item A tabela \texttt{atendimentos} possui período gerado com \texttt{tstzrange}.
+  \item O PostgreSQL usa uma restrição \texttt{EXCLUDE USING GIST} para impedir choque de agenda do mesmo veterinário.
+  \item \texttt{valor\_total} é uma coluna gerada automaticamente como \texttt{valor\_base + valor\_adicional}.
+\end{itemize}
+
+\begin{lstlisting}[style=codigo,language=SQL,caption={Restrição que evita choque de horários do mesmo veterinário}]
+ALTER TABLE atendimentos
+  ADD CONSTRAINT ex_atendimentos_sem_choque_veterinario
+  EXCLUDE USING GIST (
+    id_veterinario WITH =,
+    periodo WITH &&
+  )
+  WHERE (status IN ('aguardando_confirmacao', 'confirmado', 'realizado'));
+\end{lstlisting}
+
+\section{Funcionalidades por Perfil}
+
+\subsection{Administrador}
+
+O administrador possui acesso às principais telas administrativas do sistema:
+
+\begin{itemize}[leftmargin=*]
+  \item dashboard geral da clínica;
+  \item agenda completa com filtros por veterinário, dia e status;
+  \item cadastro e edição de tutores/clientes;
+  \item cadastro e edição de animais;
+  \item cadastro e edição de veterinários;
+  \item cadastro e edição de procedimentos e preços;
+  \item bloqueio de agenda;
+  \item consulta de prontuários;
+  \item painel de lembretes;
+  \item relatórios.
+\end{itemize}
+
+\subsection{Veterinário}
+
+O veterinário visualiza sua própria agenda no formato de calendário, pode abrir atendimentos, consultar dados do tutor e do animal, confirmar ou cancelar atendimentos, registrar prontuários e informar valores adicionais quando houver medicamentos, exames ou outros custos.
+
+\subsection{Tutor/Cliente}
+
+O tutor pode acessar o sistema com login e senha, visualizar seus animais, realizar agendamentos dentro das regras da clínica, acompanhar o status dos atendimentos, cancelar consulta dentro do prazo permitido e visualizar lembretes referentes aos seus animais.
+
+\section{Regras de Agendamento}
+
+As regras de agendamento foram implementadas no backend e reforçadas pelo banco de dados.
+
+\begin{itemize}[leftmargin=*]
+  \item Não é permitido marcar atendimento no passado.
+  \item Não é permitido marcar atendimento com mais de um ano de antecedência.
+  \item Segunda a sexta: horários entre 08:00 e 18:00.
+  \item Sábado: horários entre 08:00 e 12:00.
+  \item Domingo: indisponível.
+  \item O procedimento deve caber dentro do horário de funcionamento.
+  \item Um mesmo veterinário não pode ter atendimentos com horários sobrepostos.
+  \item Bloqueios de agenda impedem novos atendimentos no período bloqueado.
+\end{itemize}
+
+\begin{lstlisting}[style=codigo,language=JavaScript,caption={Criação de atendimento com validação de animal, procedimento, horário e bloqueios}]
+router.post("/atendimentos", auth, async (req, res) => {
+  const animal = await getAnimal(req.body.id_animal);
+  const procedimento = await getProcedure(req.body.id_procedimento);
+
+  const scheduleError = validateSchedule(
+    req.body.data,
+    req.body.hora,
+    procedimento.duracao_padrao_minutos
+  );
+
+  if (scheduleError) {
+    return res.status(400).json({ erro: scheduleError });
+  }
+
+  const inicio = parseLocalDateTime(req.body.data, req.body.hora);
+
+  if (await hasScheduleBlock(
+    req.body.id_veterinario,
+    inicio,
+    procedimento.duracao_padrao_minutos
+  )) {
+    return res.status(409).json({ erro: "Agenda bloqueada para este periodo" });
+  }
+
+  const [rows] = await db.query(`
+    INSERT INTO atendimentos
+      (id_animal, id_cliente, id_veterinario, id_procedimento,
+       inicio, fim, status, origem, observacoes, valor_base, criado_por)
+    VALUES (
+      ?, ?, ?, ?, ?::timestamptz,
+      ?::timestamptz + (?::int * INTERVAL '1 minute'),
+      ?, ?, ?, ?, ?
+    )
+    RETURNING id_atendimento
+  `, [/* parametros */]);
+
+  await generateAutomaticReminders();
+});
+\end{lstlisting}
+
+\section{Lembretes Automáticos}
+
+Os lembretes deixaram de ser gerados manualmente no backend e passaram a ser gerados por uma função armazenada no PostgreSQL. Essa decisão fortalece o trabalho em Banco de Dados II, pois move parte relevante da regra de negócio para programação no banco.
+
+A função \texttt{gerar\_lembretes\_automaticos()} cria lembretes para:
+
+\begin{itemize}[leftmargin=*]
+  \item consultas próximas;
+  \item confirmação de consulta;
+  \item vacinas vencendo;
+  \item vacinas vencidas;
+  \item animais sem atendimento recente.
+\end{itemize}
+
+\begin{lstlisting}[style=codigo,language=SQL,caption={Função armazenada que gera lembretes automáticos}]
+CREATE OR REPLACE FUNCTION gerar_lembretes_automaticos()
+RETURNS INTEGER AS $$
+DECLARE
+  v_admin_id BIGINT;
+  v_total INTEGER := 0;
+  v_count INTEGER := 0;
+BEGIN
+  SELECT id_usuario
+  INTO v_admin_id
+  FROM usuarios
+  WHERE tipo_usuario = 'admin'
+  ORDER BY id_usuario
+  LIMIT 1;
+
+  INSERT INTO lembretes (
+    id_animal, id_cliente, id_atendimento, tipo,
+    titulo, descricao, data_prevista, prioridade,
+    status, responsavel_usuario_id
+  )
+  SELECT
+    at.id_animal,
+    at.id_cliente,
+    at.id_atendimento,
+    'consulta_proxima'::tipo_lembrete,
+    'Confirmar consulta de ' || an.nome,
+    'Entrar em contato com o tutor para lembrar do atendimento.',
+    (at.inicio AT TIME ZONE 'America/Sao_Paulo')::date - 1,
+    'media'::prioridade_lembrete,
+    'pendente'::status_lembrete,
+    v_admin_id
+  FROM atendimentos at
+  JOIN animais an ON an.id_animal = at.id_animal
+  WHERE at.status IN ('aguardando_confirmacao', 'confirmado')
+    AND at.inicio >= NOW()
+    AND at.inicio <= NOW() + INTERVAL '14 days';
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  v_total := v_total + v_count;
+
+  RETURN v_total;
+END;
+$$ LANGUAGE plpgsql;
+\end{lstlisting}
+
+\subsection{Triggers de Automação}
+
+Além da chamada feita pelo backend, o banco também possui triggers para disparar a geração de lembretes quando há alterações em atendimentos ou vacinas aplicadas.
+
+\begin{lstlisting}[style=codigo,language=SQL,caption={Trigger para disparar a geração de lembretes após mudanças em atendimentos}]
+CREATE OR REPLACE FUNCTION disparar_geracao_lembretes()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM gerar_lembretes_automaticos();
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_atendimentos_gerar_lembretes
+AFTER INSERT OR UPDATE OF inicio, fim, status,
+  id_animal, id_cliente, id_procedimento
+ON atendimentos
+FOR EACH STATEMENT EXECUTE FUNCTION disparar_geracao_lembretes();
+\end{lstlisting}
+
+\section{Atendimento aos Requisitos do Roteiro}
+
+\subsection{Conexão com a Base de Dados}
+
+O arquivo \texttt{backend/db.js} centraliza a conexão. Para PostgreSQL, usa a biblioteca \texttt{pg} e variáveis de ambiente como host, usuário, senha, banco e porta.
+
+\begin{lstlisting}[style=codigo,language=JavaScript,caption={Trecho de conexão com PostgreSQL em backend/db.js}]
+function postgresPool() {
+  const { Pool } = require("pg");
+
+  const pool = new Pool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 5432,
+    max: Number(process.env.DB_POOL_SIZE || 10),
+    ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false
+  });
+
+  return {
+    async query(sql, params = []) {
+      const result = await pool.query(convertPlaceholders(sql), params);
+      return normalizeResult(result);
+    }
+  };
+}
+\end{lstlisting}
+
+\subsection{Uso de Transações}
+
+O roteiro pede transações para funcionalidades compostas por mais de uma operação SQL. O sistema usa transações ao criar clientes, editar clientes, editar perfil e editar veterinários, pois essas operações envolvem mais de uma tabela.
+
+\begin{lstlisting}[style=codigo,language=JavaScript,caption={Controle de transação no arquivo db.js}]
+async getConnection() {
+  const client = await pool.connect();
+
+  return {
+    async beginTransaction() {
+      await client.query("BEGIN");
+    },
+    async commit() {
+      await client.query("COMMIT");
+    },
+    async rollback() {
+      await client.query("ROLLBACK");
+    }
+  };
+}
+\end{lstlisting}
+
+\begin{lstlisting}[style=codigo,language=JavaScript,caption={Exemplo de transação ao cadastrar cliente}]
+router.post("/clientes", auth, allow("admin"), async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [usuarios] = await conn.query(`
+      INSERT INTO usuarios (nome, email, cpf, senha_hash, tipo_usuario)
+      VALUES (?, ?, ?, ?, 'cliente')
+      RETURNING id_usuario
+    `, [req.body.nome, req.body.email, req.body.cpf, senhaHash]);
+
+    const [clientes] = await conn.query(`
+      INSERT INTO clientes
+        (id_usuario, telefone, rua, numero, bairro, cidade, estado, cep, observacoes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      RETURNING id_cliente
+    `, [usuarios[0].id_usuario, /* demais campos */]);
+
+    await conn.commit();
+    res.status(201).json({ id_cliente: clientes[0].id_cliente });
+  } catch (error) {
+    await conn.rollback();
+    res.status(500).json({ erro: "Erro ao cadastrar cliente" });
+  } finally {
+    conn.release();
+  }
+});
+\end{lstlisting}
+
+\subsection{Consulta SQL com Junções}
+
+O sistema possui várias consultas com \texttt{JOIN}. Um exemplo importante é a view \texttt{vw\_agenda\_atendimentos}, usada para listar a agenda com dados do atendimento, animal, tutor, veterinário e procedimento.
+
+\begin{lstlisting}[style=codigo,language=SQL,caption={View com múltiplas junções para agenda}]
+CREATE OR REPLACE VIEW vw_agenda_atendimentos AS
+SELECT
+  at.id_atendimento,
+  at.inicio,
+  at.fim,
+  at.status,
+  an.nome AS animal,
+  uc.nome AS tutor,
+  uv.nome AS veterinario,
+  p.nome AS procedimento,
+  p.duracao_padrao_minutos
+FROM atendimentos at
+JOIN animais an ON an.id_animal = at.id_animal
+JOIN clientes c ON c.id_cliente = at.id_cliente
+JOIN usuarios uc ON uc.id_usuario = c.id_usuario
+JOIN veterinarios v ON v.id_veterinario = at.id_veterinario
+JOIN usuarios uv ON uv.id_usuario = v.id_usuario
+JOIN procedimentos p ON p.id_procedimento = at.id_procedimento;
+\end{lstlisting}
+
+\subsection{Stored Procedure ou Function com Parâmetro}
+
+No PostgreSQL, foi utilizada uma função armazenada em PL/pgSQL. Ela recebe o identificador do animal como parâmetro e retorna seu histórico clínico.
+
+\begin{lstlisting}[style=codigo,language=SQL,caption={Função armazenada com parâmetro}]
+CREATE OR REPLACE FUNCTION buscar_historico_animal(p_id_animal BIGINT)
+RETURNS TABLE (
+  id_atendimento BIGINT,
+  animal TEXT,
+  tutor TEXT,
+  veterinario TEXT,
+  procedimento TEXT,
+  status status_atendimento,
+  inicio TIMESTAMPTZ,
+  valor_total NUMERIC(10,2),
+  diagnostico TEXT,
+  prescricao TEXT
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    at.id_atendimento,
+    an.nome::TEXT,
+    uc.nome::TEXT,
+    uv.nome::TEXT,
+    pr.nome::TEXT,
+    at.status,
+    at.inicio,
+    at.valor_total,
+    po.diagnostico,
+    po.prescricao
+  FROM atendimentos at
+  JOIN animais an ON an.id_animal = at.id_animal
+  JOIN clientes c ON c.id_cliente = at.id_cliente
+  JOIN usuarios uc ON uc.id_usuario = c.id_usuario
+  JOIN veterinarios v ON v.id_veterinario = at.id_veterinario
+  JOIN usuarios uv ON uv.id_usuario = v.id_usuario
+  JOIN procedimentos pr ON pr.id_procedimento = at.id_procedimento
+  LEFT JOIN prontuarios po ON po.id_atendimento = at.id_atendimento
+  WHERE at.id_animal = p_id_animal
+  ORDER BY at.inicio DESC;
+END;
+$$ LANGUAGE plpgsql;
+\end{lstlisting}
+
+O backend chama a função pela rota de relatório:
+
+\begin{lstlisting}[style=codigo,language=JavaScript,caption={Chamada da função armazenada pelo backend}]
+router.get("/relatorios/historico-animal/:id", auth, async (req, res) => {
+  const [historico] = await db.query(
+    "SELECT * FROM buscar_historico_animal(?)",
+    [req.params.id]
+  );
+
+  res.json(historico);
+});
+\end{lstlisting}
+
+\subsection{Uso dos Comandos SELECT, INSERT, UPDATE e DELETE}
+
+\begin{longtable}{p{3cm}p{5cm}p{6cm}}
+\toprule
+\textbf{Comando} & \textbf{Onde aparece} & \textbf{Exemplo de funcionalidade} \\
+\midrule
+\texttt{SELECT} & Listagem de clientes, animais, agenda, relatórios e histórico do animal. & Buscar agenda com dados de animal, tutor, veterinário e procedimento. \\
+\texttt{INSERT} & Cadastro de usuários, clientes, animais, procedimentos, atendimentos, bloqueios e prontuários. & Criar novo atendimento ou novo tutor. \\
+\texttt{UPDATE} & Edição de perfil, clientes, veterinários, animais, procedimentos, status de atendimentos e lembretes. & Alterar status de uma consulta para confirmado, cancelado ou finalizado. \\
+\texttt{DELETE} & Exclusão de bloqueios de agenda e lembretes. & Remover um lembrete ou liberar um bloqueio de agenda. \\
+\bottomrule
+\end{longtable}
+
+\begin{lstlisting}[style=codigo,language=JavaScript,caption={Exemplos de comandos SQL básicos no backend}]
+// SELECT
+db.query("SELECT * FROM animais WHERE id_cliente = ?", [req.user.id_cliente]);
+
+// INSERT
+db.query("INSERT INTO procedimentos (nome, tipo, preco_base) VALUES (?, ?, ?)");
+
+// UPDATE
+db.query("UPDATE atendimentos SET status = ? WHERE id_atendimento = ?");
+
+// DELETE
+db.query("DELETE FROM lembretes WHERE id_lembrete = ?");
+\end{lstlisting}
+
+\section{Views, Functions e Triggers Criadas}
+
+\begin{longtable}{p{5cm}p{9cm}}
+\toprule
+\textbf{Objeto} & \textbf{Finalidade} \\
+\midrule
+\texttt{vw\_agenda\_atendimentos} & Consolida atendimentos com dados do animal, tutor, veterinário e procedimento. \\
+\texttt{vw\_animais\_alerta} & Ajuda a identificar animais sem atendimento recente ou com vacinas próximas. \\
+\texttt{set\_atualizado\_em()} & Atualiza automaticamente o campo \texttt{atualizado\_em}. \\
+\texttt{gerar\_lembretes\_automaticos()} & Gera lembretes automáticos com base em consultas, vacinas e animais sem atendimento. \\
+\texttt{buscar\_historico\_animal(id)} & Retorna histórico clínico de um animal, com parâmetro. \\
+\texttt{disparar\_geracao\_lembretes()} & Função chamada por triggers para executar a geração automática de lembretes. \\
+\texttt{trg\_atendimentos\_gerar\_lembretes} & Dispara após inserções ou atualizações relevantes em atendimentos. \\
+\texttt{trg\_vacinas\_gerar\_lembretes} & Dispara após inserções ou atualizações relevantes em vacinas aplicadas. \\
+\bottomrule
+\end{longtable}
+
+\section{Dados Fictícios para Demonstração}
+
+O sistema possui seed com dados fictícios para apresentação. Exemplos de usuários:
+
+\begin{longtable}{p{4cm}p{6cm}p{3cm}}
+\toprule
+\textbf{Perfil} & \textbf{Login} & \textbf{Senha} \\
+\midrule
+Administrador & \texttt{admin@patafeliz.local} & \texttt{123456} \\
+Veterinária & \texttt{ana.ribeiro@patafeliz.local} & \texttt{123456} \\
+Veterinário & \texttt{bruno.nascimento@patafeliz.local} & \texttt{123456} \\
+Veterinária & \texttt{carla.menezes@patafeliz.local} & \texttt{123456} \\
+Cliente & \texttt{mariana.costa@email.local} & \texttt{123456} \\
+\bottomrule
+\end{longtable}
+
+\section{Como Executar para Demonstração}
+
+\subsection{Banco de Dados}
+
+Com PostgreSQL em execução na porta 5432, o banco usado é \texttt{pata\_feliz\_v2}. Os arquivos principais são:
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{backend/database/schema-v2-postgres.sql}
+  \item \texttt{backend/database/seed-v2-postgres.sql}
+  \item \texttt{backend/database/functions-v2-postgres.sql}
+\end{itemize}
+
+\subsection{Backend}
+
+O backend roda na porta 3000:
+
+\begin{lstlisting}[style=codigo,language=JavaScript,caption={Execução do backend}]
+cd backend
+npm install
+node server.js
+\end{lstlisting}
+
+\subsection{Frontend}
+
+O frontend pode ser acessado localmente pelo navegador:
+
+\begin{lstlisting}[style=codigo,caption={Endereço local do sistema}]
+http://127.0.0.1:5500/frontend/index.html
+\end{lstlisting}
+
+\section{Conclusão}
+
+O Sistema Pata Feliz atende à proposta do trabalho de Banco de Dados II, pois implementa um sistema web funcional com manipulação de dados persistentes em um banco relacional PostgreSQL. O projeto utiliza múltiplas tabelas relacionadas, operações CRUD completas, transações, consultas com junções, funções armazenadas com parâmetros, triggers e regras de integridade no banco.
+
+Além de cumprir os requisitos técnicos, o sistema apresenta funcionalidades coerentes com uma clínica veterinária real: controle de perfis, agenda, bloqueios, prontuários, procedimentos, preços, lembretes e histórico dos animais. Dessa forma, o trabalho demonstra tanto a aplicação prática de conceitos de banco de dados quanto a integração entre banco, backend e frontend.
+
+\end{document}

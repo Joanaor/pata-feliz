@@ -15,6 +15,10 @@ const state = {
   profile: null,
   showProfile: false,
   showNotifications: false,
+  appointmentDraft: {
+    date: "",
+    procedureId: ""
+  },
   agendaFilters: {
     veterinarian: "",
     day: "",
@@ -29,7 +33,8 @@ const state = {
     procedimentos: [],
     atendimentos: [],
     prontuarios: [],
-    lembretes: []
+    lembretes: [],
+    bloqueios: []
   }
 };
 
@@ -97,6 +102,48 @@ function timeOnly(value) {
   });
 }
 
+function getProcedureById(id) {
+  return state.data.procedimentos.find(item => Number(item.id_procedimento) === Number(id));
+}
+
+function minutesToTime(minutes) {
+  const hour = String(Math.floor(minutes / 60)).padStart(2, "0");
+  const minute = String(minutes % 60).padStart(2, "0");
+  return `${hour}:${minute}`;
+}
+
+function validTimeOptions(date, procedureId) {
+  if (!date || !procedureId) return [];
+
+  const procedure = getProcedureById(procedureId);
+  const duration = Number(procedure?.duracao_padrao_minutos || 60);
+  const selected = new Date(`${date}T12:00:00`);
+  const day = selected.getDay();
+
+  if (day === 0) return [];
+
+  const start = 8 * 60;
+  const close = day === 6 ? 12 * 60 : 18 * 60;
+  const options = [];
+
+  for (let minutes = start; minutes + duration <= close; minutes += 30) {
+    options.push(minutesToTime(minutes));
+  }
+
+  return options;
+}
+
+function isInvalidClientDate(date) {
+  if (!date) return false;
+  const day = new Date(`${date}T12:00:00`).getDay();
+  return day === 0;
+}
+
+function setAppointmentDraft(key, value) {
+  state.appointmentDraft[key] = value;
+  render();
+}
+
 function statusLabel(status) {
   const labels = {
     aguardando_confirmacao: "Aguardando confirmacao",
@@ -137,6 +184,7 @@ function canSee(view) {
     procedimentos: ["admin", "veterinario", "cliente"],
     prontuarios: ["admin", "veterinario", "cliente"],
     lembretes: ["admin", "veterinario", "cliente"],
+    bloqueios: ["admin"],
     relatorios: ["admin", "veterinario"]
   };
 
@@ -193,6 +241,10 @@ async function loadAll() {
     tasks.push(api("/clientes").then(data => state.data.clientes = data));
   }
 
+  if (state.user.tipo_usuario === "admin") {
+    tasks.push(api("/bloqueios-agenda").then(data => state.data.bloqueios = data));
+  }
+
   if (["admin", "veterinario", "cliente"].includes(state.user.tipo_usuario)) {
     tasks.push(api("/lembretes").then(data => state.data.lembretes = data));
   }
@@ -210,6 +262,7 @@ function navItems() {
     ["procedimentos", "Procedimentos"],
     ["prontuarios", "Prontuarios"],
     ["lembretes", "Lembretes"],
+    ["bloqueios", "Editar Agenda"],
     ["relatorios", "Relatorios"]
   ].filter(([id]) => canSee(id));
 }
@@ -403,6 +456,7 @@ function renderView() {
     procedimentos: renderProcedimentos,
     prontuarios: renderProntuarios,
     lembretes: renderLembretes,
+    bloqueios: renderBloqueios,
     relatorios: renderRelatorios
   }[state.view]();
 }
@@ -836,15 +890,37 @@ async function cancelByStaff(id) {
 function renderAppointmentForm() {
   const animalOptions = state.data.animais.map(a => `<option value="${a.id_animal}">${a.nome} - ${a.tutor}</option>`).join("");
   const vetOptions = state.data.veterinarios.map(v => `<option value="${v.id_veterinario}">${v.nome}</option>`).join("");
-  const procOptions = state.data.procedimentos.map(p => `<option value="${p.id_procedimento}">${p.nome} - ${p.duracao_padrao_minutos} min - ${money(p.preco_base)}</option>`).join("");
+  const defaultProcedure = state.appointmentDraft.procedureId || state.data.procedimentos[0]?.id_procedimento || "";
+  const procOptions = state.data.procedimentos.map(p => `<option value="${p.id_procedimento}" ${String(defaultProcedure) === String(p.id_procedimento) ? "selected" : ""}>${p.nome} - ${p.duracao_padrao_minutos} min - ${money(p.preco_base)}</option>`).join("");
+  const today = new Date().toISOString().slice(0, 10);
+  const maxDate = new Date();
+  maxDate.setFullYear(maxDate.getFullYear() + 1);
+  const maxDateValue = maxDate.toISOString().slice(0, 10);
+  const clientHint = `<p class="form-hint">Atendimentos podem ser marcados de segunda a sexta das 08:00 as 18:00, e sabado das 08:00 as 12:00.</p>`;
+  const isClient = state.user.tipo_usuario === "cliente";
+  const selectedDate = state.appointmentDraft.date;
+  const isSunday = isInvalidClientDate(selectedDate);
+  const times = validTimeOptions(selectedDate, defaultProcedure);
+  const timeControl = isClient
+    ? `
+      <label>Horario
+        <select name="hora" class="form-control" ${!times.length ? "disabled" : ""} required>
+          <option value="">${isSunday ? "Domingo indisponivel" : selectedDate ? "Selecione" : "Escolha a data"}</option>
+          ${times.map(time => `<option value="${time}">${time}</option>`).join("")}
+        </select>
+      </label>
+    `
+    : `<label>Hora<input name="hora" type="time" class="form-control" min="08:00" max="18:00" required /></label>`;
 
   return panel("Novo agendamento", `
+    ${clientHint}
+    ${isClient && isSunday ? `<p class="form-warning">Domingos nao estao disponiveis para agendamento.</p>` : ""}
     <form class="form-grid" onsubmit="saveAppointment(event)">
       <label>Animal<select name="id_animal" class="form-control" required>${animalOptions}</select></label>
       <label>Veterinario<select name="id_veterinario" class="form-control" required>${vetOptions}</select></label>
-      <label>Procedimento<select name="id_procedimento" class="form-control" required>${procOptions}</select></label>
-      <label>Data<input name="data" type="date" class="form-control" required /></label>
-      <label>Hora<input name="hora" type="time" class="form-control" required /></label>
+      <label>Procedimento<select name="id_procedimento" class="form-control" onchange="setAppointmentDraft('procedureId', this.value)" required>${procOptions}</select></label>
+      <label>Data<input name="data" type="date" class="form-control" min="${today}" max="${maxDateValue}" value="${selectedDate}" onchange="setAppointmentDraft('date', this.value)" required /></label>
+      ${timeControl}
       <label>Observacoes<input name="observacoes" class="form-control" /></label>
       <button class="btn-primary-app" type="submit">Agendar</button>
     </form>
@@ -858,6 +934,7 @@ async function saveAppointment(event) {
   try {
     await api("/atendimentos", { method: "POST", body: JSON.stringify(data) });
     event.target.reset();
+    state.appointmentDraft = { date: "", procedureId: "" };
     await refresh();
   } catch (error) {
     alert(error.message);
@@ -1394,11 +1471,106 @@ async function deleteReminder(id) {
   }
 }
 
+function renderBloqueios() {
+  const vetOptions = state.data.veterinarios
+    .map(v => `<option value="${v.id_veterinario}">${v.nome}</option>`)
+    .join("");
+
+  const rows = state.data.bloqueios.map(item => [
+    item.veterinario || "Clínica inteira",
+    dateTime(item.inicio),
+    dateTime(item.fim),
+    item.motivo,
+    `<button class="btn-mini danger" onclick="deleteScheduleBlock(${item.id_bloqueio})">Excluir</button>`
+  ]);
+
+  return `
+    ${panel("Bloquear agenda", `
+      <form class="form-grid" onsubmit="saveScheduleBlock(event)">
+        <label>Tipo
+          <select name="tipo" class="form-control" onchange="toggleVetBlock(this.value)">
+            <option value="geral">Clínica inteira</option>
+            <option value="veterinario">Veterinário específico</option>
+          </select>
+        </label>
+        <label id="vetBlockField" class="hidden-field">Veterinário
+          <select name="id_veterinario" class="form-control">
+            <option value="">Selecione</option>
+            ${vetOptions}
+          </select>
+        </label>
+        <label>Data início<input name="data_inicio" type="date" class="form-control" required /></label>
+        <label>Hora início<input name="hora_inicio" type="time" class="form-control" value="08:00" required /></label>
+        <label>Data fim<input name="data_fim" type="date" class="form-control" required /></label>
+        <label>Hora fim<input name="hora_fim" type="time" class="form-control" value="18:00" required /></label>
+        <label>Motivo<input name="motivo" class="form-control" placeholder="Feriado, férias, atestado..." required /></label>
+        <button class="btn-primary-app" type="submit">Criar bloqueio</button>
+      </form>
+    `)}
+    ${panel("Bloqueios cadastrados", table(["Escopo", "Início", "Fim", "Motivo", "Ações"], rows))}
+  `;
+}
+
+function toggleVetBlock(value) {
+  const field = document.getElementById("vetBlockField");
+  if (!field) return;
+  field.classList.toggle("hidden-field", value !== "veterinario");
+}
+
+async function saveScheduleBlock(event) {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(event.target).entries());
+
+  if (data.tipo === "geral") {
+    data.id_veterinario = "";
+  }
+
+  try {
+    await api("/bloqueios-agenda", {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
+    event.target.reset();
+    await refresh();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function deleteScheduleBlock(id) {
+  if (!confirm("Deseja excluir este bloqueio?")) return;
+
+  try {
+    await api(`/bloqueios-agenda/${id}`, { method: "DELETE" });
+    await refresh();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
 function renderRelatorios() {
+  const animalOptions = state.data.animais
+    .map(a => `<option value="${a.id_animal}">${a.nome} - ${a.tutor || "meu animal"}</option>`)
+    .join("");
+
   return `
     <div class="report-actions">
       <button class="btn-primary-app" onclick="loadReports()">Atualizar relatorios</button>
     </div>
+    ${panel("Historico do animal por funcao armazenada", `
+      <div class="form-grid">
+        <label>Animal
+          <select id="historyAnimalSelect" class="form-control">
+            <option value="">Selecione...</option>
+            ${animalOptions}
+          </select>
+        </label>
+        <label>&nbsp;
+          <button class="btn-primary-app" type="button" onclick="loadAnimalHistoryReport()">Buscar historico</button>
+        </label>
+      </div>
+      <div id="animalHistoryReport" class="mt-3"></div>
+    `)}
     <div id="reports" class="report-grid"></div>
   `;
 }
@@ -1414,6 +1586,32 @@ async function loadReports() {
       ${panel("Procedimentos mais solicitados", table(["Procedimento", "Total"], servicos.map(s => [s.servico, s.total])))}
       ${state.user.tipo_usuario === "admin" ? panel("Veterinarios com mais atendimentos", table(["Veterinario", "Total"], veterinarios.map(v => [v.veterinario, v.total]))) : ""}
     `;
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function loadAnimalHistoryReport() {
+  const id = document.getElementById("historyAnimalSelect")?.value;
+  if (!id) {
+    alert("Selecione um animal");
+    return;
+  }
+
+  try {
+    const historico = await api(`/relatorios/historico-animal/${id}`);
+    document.getElementById("animalHistoryReport").innerHTML = table(
+      ["Data", "Tutor", "Veterinario", "Procedimento", "Status", "Valor", "Diagnostico"],
+      historico.map(item => [
+        dateTime(item.inicio),
+        item.tutor,
+        item.veterinario,
+        item.procedimento,
+        item.status,
+        money(item.valor_total),
+        item.diagnostico || "Sem prontuario"
+      ])
+    );
   } catch (error) {
     alert(error.message);
   }

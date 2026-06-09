@@ -630,6 +630,30 @@ select {
   gap: 6px;
 }
 
+.form-hint {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eef8f6;
+  color: var(--primary-dark);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.form-warning {
+  margin: -4px 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff3cd;
+  color: #7a4b00;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.hidden-field {
+  display: none !important;
+}
+
 .table {
   margin: 0;
 }

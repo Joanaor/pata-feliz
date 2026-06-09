@@ -169,7 +169,7 @@ CREATE TABLE disponibilidade_veterinarios (
 
 CREATE TABLE bloqueios_agenda (
   id_bloqueio BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  id_veterinario BIGINT UNSIGNED NOT NULL,
+  id_veterinario BIGINT UNSIGNED NULL,
   inicio DATETIME NOT NULL,
   fim DATETIME NOT NULL,
   motivo VARCHAR(255) NOT NULL,

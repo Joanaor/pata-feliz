@@ -80,6 +80,54 @@ function parseLocalDateTime(date, time) {
   return `${date} ${time}:00-03`;
 }
 
+function validateSchedule(date, time, durationMinutes) {
+  if (!date || !time) {
+    return "Informe data e hora do atendimento";
+  }
+
+  const start = new Date(`${date}T${time}:00-03:00`);
+  const end = new Date(start.getTime() + Number(durationMinutes || 0) * 60000);
+  const now = new Date();
+
+  if (Number.isNaN(start.getTime())) {
+    return "Data ou hora invalida";
+  }
+
+  if (start <= now) {
+    return "Nao e permitido marcar consultas no passado";
+  }
+
+  const maxDate = new Date(now);
+  maxDate.setFullYear(maxDate.getFullYear() + 1);
+
+  if (start > maxDate) {
+    return "Nao e permitido marcar consultas com mais de 1 ano de antecedencia";
+  }
+
+  const day = start.getDay();
+  const startMinutes = start.getHours() * 60 + start.getMinutes();
+  const endMinutes = end.getHours() * 60 + end.getMinutes();
+  const sameDay = start.toLocaleDateString("pt-BR") === end.toLocaleDateString("pt-BR");
+
+  if (day >= 1 && day <= 5) {
+    if (!sameDay || startMinutes < 8 * 60 || endMinutes > 18 * 60) {
+      return "Consultas podem ser marcadas de segunda a sexta, das 08:00 as 18:00";
+    }
+
+    return null;
+  }
+
+  if (day === 6) {
+    if (!sameDay || startMinutes < 8 * 60 || endMinutes > 12 * 60) {
+      return "Consultas podem ser marcadas aos sabados, das 08:00 as 12:00";
+    }
+
+    return null;
+  }
+
+  return "Nao e permitido marcar consultas aos domingos";
+}
+
 async function getProcedure(id) {
   const [rows] = await db.query(
     "SELECT * FROM procedimentos WHERE id_procedimento = ?",
@@ -98,6 +146,21 @@ async function getAnimal(id) {
   return rows[0];
 }
 
+async function hasScheduleBlock(idVeterinario, inicio, durationMinutes) {
+  const [rows] = await db.query(
+    `
+      SELECT 1
+      FROM bloqueios_agenda b
+      WHERE (b.id_veterinario IS NULL OR b.id_veterinario = ?)
+        AND b.periodo && tstzrange(?::timestamptz, ?::timestamptz + (?::int * INTERVAL '1 minute'), '[)')
+      LIMIT 1
+    `,
+    [idVeterinario, inicio, inicio, durationMinutes]
+  );
+
+  return rows.length > 0;
+}
+
 async function ensureClientOwnsAnimal(user, idAnimal) {
   if (user.tipo_usuario !== "cliente") return true;
 
@@ -110,204 +173,7 @@ async function ensureClientOwnsAnimal(user, idAnimal) {
 }
 
 async function generateAutomaticReminders() {
-  const [adminRows] = await db.query(
-    "SELECT id_usuario FROM usuarios WHERE tipo_usuario = 'admin' ORDER BY id_usuario LIMIT 1"
-  );
-  const adminId = adminRows[0]?.id_usuario || null;
-
-  await db.query(
-    `
-      INSERT INTO lembretes (
-        id_animal,
-        id_cliente,
-        id_atendimento,
-        tipo,
-        titulo,
-        descricao,
-        data_prevista,
-        prioridade,
-        status,
-        responsavel_usuario_id
-      )
-      SELECT
-        at.id_animal,
-        at.id_cliente,
-        at.id_atendimento,
-        'consulta_proxima'::tipo_lembrete,
-        'Confirmar consulta de ' || an.nome,
-        'Entrar em contato com o tutor para lembrar do atendimento em ' || to_char(at.inicio AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') || '.',
-        (at.inicio AT TIME ZONE 'America/Sao_Paulo')::date - 1,
-        CASE
-          WHEN p.tipo = 'cirurgia' THEN 'alta'::prioridade_lembrete
-          ELSE 'media'::prioridade_lembrete
-        END,
-        'pendente'::status_lembrete,
-        ?
-      FROM atendimentos at
-      JOIN animais an ON an.id_animal = at.id_animal
-      JOIN procedimentos p ON p.id_procedimento = at.id_procedimento
-      WHERE at.status IN ('aguardando_confirmacao', 'confirmado')
-        AND at.inicio >= NOW()
-        AND at.inicio <= NOW() + INTERVAL '14 days'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM lembretes l
-          WHERE l.tipo = 'consulta_proxima'
-            AND l.id_atendimento = at.id_atendimento
-        )
-    `,
-    [adminId]
-  );
-
-  await db.query(
-    `
-      INSERT INTO lembretes (
-        id_animal,
-        id_cliente,
-        id_atendimento,
-        tipo,
-        titulo,
-        descricao,
-        data_prevista,
-        prioridade,
-        status,
-        responsavel_usuario_id
-      )
-      SELECT
-        at.id_animal,
-        at.id_cliente,
-        at.id_atendimento,
-        'consulta_proxima'::tipo_lembrete,
-        'Consulta: ' || p.nome,
-        'Atendimento de ' || an.nome || ' em ' || to_char(at.inicio AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') || '.',
-        (at.inicio AT TIME ZONE 'America/Sao_Paulo')::date - 1,
-        'media'::prioridade_lembrete,
-        'pendente'::status_lembrete,
-        NULL
-      FROM atendimentos at
-      JOIN animais an ON an.id_animal = at.id_animal
-      JOIN procedimentos p ON p.id_procedimento = at.id_procedimento
-      WHERE at.status IN ('aguardando_confirmacao', 'confirmado')
-        AND at.inicio >= NOW()
-        AND at.inicio <= NOW() + INTERVAL '14 days'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM lembretes l
-          WHERE l.tipo = 'consulta_proxima'
-            AND l.id_atendimento = at.id_atendimento
-            AND l.titulo NOT LIKE 'Confirmar%'
-        )
-    `
-  );
-
-  await db.query(
-    `
-      INSERT INTO lembretes (
-        id_animal,
-        id_cliente,
-        tipo,
-        titulo,
-        descricao,
-        data_prevista,
-        prioridade,
-        status,
-        responsavel_usuario_id
-      )
-      SELECT
-        va.id_animal,
-        an.id_cliente,
-        CASE
-          WHEN va.proxima_dose_em < CURRENT_DATE THEN 'vacina_vencida'::tipo_lembrete
-          ELSE 'vacina_vencendo'::tipo_lembrete
-        END,
-        CASE
-          WHEN va.proxima_dose_em < CURRENT_DATE THEN 'Vacina vencida de ' || an.nome
-          ELSE 'Vacina vencendo de ' || an.nome
-        END,
-        'Proxima dose prevista para ' || to_char(va.proxima_dose_em, 'DD/MM/YYYY') || '.',
-        va.proxima_dose_em,
-        CASE
-          WHEN va.proxima_dose_em < CURRENT_DATE THEN 'alta'::prioridade_lembrete
-          ELSE 'media'::prioridade_lembrete
-        END,
-        'pendente'::status_lembrete,
-        ?
-      FROM vacinas_aplicadas va
-      JOIN animais an ON an.id_animal = va.id_animal
-      WHERE va.proxima_dose_em IS NOT NULL
-        AND va.proxima_dose_em <= CURRENT_DATE + INTERVAL '30 days'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM lembretes l
-          WHERE l.id_animal = va.id_animal
-            AND l.data_prevista = va.proxima_dose_em
-            AND l.tipo IN ('vacina_vencendo', 'vacina_vencida')
-        )
-    `,
-    [adminId]
-  );
-
-  await db.query(
-    `
-      INSERT INTO lembretes (
-        id_animal,
-        id_cliente,
-        tipo,
-        titulo,
-        descricao,
-        data_prevista,
-        prioridade,
-        status,
-        responsavel_usuario_id
-      )
-      SELECT
-        an.id_animal,
-        an.id_cliente,
-        'animal_sem_atendimento'::tipo_lembrete,
-        an.nome || ' esta sem atendimento recente',
-        'Animal sem atendimento finalizado nos ultimos 12 meses. Avaliar contato com o tutor.',
-        CURRENT_DATE,
-        CASE
-          WHEN an.data_nascimento IS NOT NULL AND an.data_nascimento <= CURRENT_DATE - INTERVAL '8 years' THEN 'alta'::prioridade_lembrete
-          ELSE 'media'::prioridade_lembrete
-        END,
-        'pendente'::status_lembrete,
-        ?
-      FROM animais an
-      LEFT JOIN atendimentos at
-        ON at.id_animal = an.id_animal
-        AND at.status IN ('realizado', 'finalizado')
-      WHERE an.ativo = true
-        AND NOT EXISTS (
-          SELECT 1
-          FROM atendimentos futuro
-          WHERE futuro.id_animal = an.id_animal
-            AND futuro.status IN ('aguardando_confirmacao', 'confirmado', 'realizado')
-            AND futuro.inicio >= NOW()
-        )
-      GROUP BY an.id_animal, an.id_cliente, an.nome, an.data_nascimento
-      HAVING COALESCE(MAX(at.inicio), TIMESTAMPTZ '1900-01-01') < NOW() - INTERVAL '12 months'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM lembretes l
-          WHERE l.id_animal = an.id_animal
-            AND l.tipo = 'animal_sem_atendimento'
-        )
-    `,
-    [adminId]
-  );
-
-  await db.query(
-    `
-      UPDATE lembretes
-      SET tipo = 'vacina_vencida',
-          prioridade = 'alta',
-          titulo = REPLACE(titulo, 'Vacina vencendo', 'Vacina vencida')
-      WHERE tipo = 'vacina_vencendo'
-        AND data_prevista < CURRENT_DATE
-        AND status = 'pendente'
-    `
-  );
+  await db.query("SELECT gerar_lembretes_automaticos() AS lembretes_criados");
 }
 
 router.post("/auth/login", async (req, res) => {
@@ -811,6 +677,78 @@ router.get("/veterinarios", auth, async (_req, res) => {
   }
 });
 
+router.get("/bloqueios-agenda", auth, allow("admin"), async (_req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        b.id_bloqueio,
+        b.id_veterinario,
+        b.inicio,
+        b.fim,
+        b.motivo,
+        b.criado_em,
+        uv.nome AS veterinario,
+        uc.nome AS criado_por_nome
+      FROM bloqueios_agenda b
+      LEFT JOIN veterinarios v ON v.id_veterinario = b.id_veterinario
+      LEFT JOIN usuarios uv ON uv.id_usuario = v.id_usuario
+      JOIN usuarios uc ON uc.id_usuario = b.criado_por
+      ORDER BY b.inicio DESC
+    `);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ erro: "Erro ao listar bloqueios", detalhes: error.message });
+  }
+});
+
+router.post("/bloqueios-agenda", auth, allow("admin"), async (req, res) => {
+  try {
+    const inicio = parseLocalDateTime(req.body.data_inicio, req.body.hora_inicio);
+    const fim = parseLocalDateTime(req.body.data_fim || req.body.data_inicio, req.body.hora_fim);
+
+    const [periodo] = await db.query(
+      "SELECT (?::timestamptz > NOW()) AS futuro, (?::timestamptz > ?::timestamptz) AS valido",
+      [inicio, fim, inicio]
+    );
+
+    if (!periodo[0].futuro) {
+      return res.status(400).json({ erro: "Nao e permitido criar bloqueio no passado" });
+    }
+
+    if (!periodo[0].valido) {
+      return res.status(400).json({ erro: "Fim do bloqueio deve ser depois do inicio" });
+    }
+
+    const [rows] = await db.query(
+      `
+        INSERT INTO bloqueios_agenda (id_veterinario, inicio, fim, motivo, criado_por)
+        VALUES (?, ?::timestamptz, ?::timestamptz, ?, ?)
+        RETURNING id_bloqueio
+      `,
+      [
+        req.body.id_veterinario || null,
+        inicio,
+        fim,
+        req.body.motivo,
+        req.user.id_usuario
+      ]
+    );
+
+    res.status(201).json({ id_bloqueio: rows[0].id_bloqueio });
+  } catch (error) {
+    res.status(500).json({ erro: "Erro ao criar bloqueio", detalhes: error.message });
+  }
+});
+
+router.delete("/bloqueios-agenda/:id", auth, allow("admin"), async (req, res) => {
+  try {
+    await db.query("DELETE FROM bloqueios_agenda WHERE id_bloqueio = ?", [req.params.id]);
+    res.json({ mensagem: "Bloqueio excluido" });
+  } catch (error) {
+    res.status(500).json({ erro: "Erro ao excluir bloqueio", detalhes: error.message });
+  }
+});
+
 router.put("/veterinarios/:id", auth, allow("admin"), async (req, res) => {
   const conn = await db.getConnection();
 
@@ -961,7 +899,17 @@ router.post("/atendimentos", auth, async (req, res) => {
     const ok = await ensureClientOwnsAnimal(req.user, req.body.id_animal);
     if (!ok) return res.status(403).json({ erro: "Acesso negado ao animal" });
 
+    const scheduleError = validateSchedule(req.body.data, req.body.hora, procedimento.duracao_padrao_minutos);
+    if (scheduleError) {
+      return res.status(400).json({ erro: scheduleError });
+    }
+
     const inicio = parseLocalDateTime(req.body.data, req.body.hora);
+
+    if (await hasScheduleBlock(req.body.id_veterinario, inicio, procedimento.duracao_padrao_minutos)) {
+      return res.status(409).json({ erro: "Agenda bloqueada para este periodo" });
+    }
+
     const [rows] = await db.query(
       `
         INSERT INTO atendimentos
@@ -1250,6 +1198,43 @@ router.delete("/lembretes/:id", auth, allow("admin", "veterinario", "cliente"), 
     res.json({ mensagem: "Lembrete excluido" });
   } catch (error) {
     res.status(500).json({ erro: "Erro ao excluir lembrete", detalhes: error.message });
+  }
+});
+
+router.get("/relatorios/historico-animal/:id", auth, allow("admin", "veterinario", "cliente"), async (req, res) => {
+  try {
+    const animal = await getAnimal(req.params.id);
+    if (!animal) {
+      return res.status(404).json({ erro: "Animal nao encontrado" });
+    }
+
+    if (req.user.tipo_usuario === "cliente" && Number(animal.id_cliente) !== Number(req.user.id_cliente)) {
+      return res.status(403).json({ erro: "Acesso negado" });
+    }
+
+    if (req.user.tipo_usuario === "veterinario") {
+      const [rows] = await db.query(
+        "SELECT 1 FROM atendimentos WHERE id_animal = ? AND id_veterinario = ? LIMIT 1",
+        [req.params.id, req.user.id_veterinario]
+      );
+
+      if (!rows.length) {
+        return res.status(403).json({ erro: "Acesso negado" });
+      }
+    }
+
+    const [historico] = await db.query(
+      "SELECT * FROM buscar_historico_animal(?)",
+      [req.params.id]
+    );
+
+    const visibleRows = req.user.tipo_usuario === "cliente"
+      ? historico.filter(item => item.visivel_para_cliente)
+      : historico;
+
+    res.json(visibleRows);
+  } catch (error) {
+    res.status(500).json({ erro: "Erro ao carregar historico do animal", detalhes: error.message });
   }
 });
 
