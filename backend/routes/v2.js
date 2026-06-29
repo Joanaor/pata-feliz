@@ -434,26 +434,7 @@ router.get("/dashboard", auth, async (req, res) => {
 
 router.get("/clientes", auth, allow("admin", "veterinario"), async (_req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT
-        c.id_cliente,
-        u.id_usuario,
-        u.nome,
-        u.email,
-        u.cpf,
-        c.telefone,
-        c.rua,
-        c.numero,
-        c.bairro,
-        c.cidade,
-        c.estado,
-        COUNT(a.id_animal)::int AS total_animais
-      FROM clientes c
-      JOIN usuarios u ON u.id_usuario = c.id_usuario
-      LEFT JOIN animais a ON a.id_cliente = c.id_cliente
-      GROUP BY c.id_cliente, u.id_usuario
-      ORDER BY u.nome
-    `);
+    const [rows] = await db.query("SELECT * FROM listar_clientes()");
     res.json(rows);
   } catch (error) {
     res.status(500).json({ erro: "Erro ao listar clientes", detalhes: error.message });
@@ -557,27 +538,9 @@ router.put("/clientes/:id", auth, allow("admin"), async (req, res) => {
 
 router.get("/animais", auth, async (req, res) => {
   try {
-    const params = [];
-    let where = "WHERE a.ativo = true";
-
-    if (req.user.tipo_usuario === "cliente") {
-      where += " AND a.id_cliente = ?";
-      params.push(req.user.id_cliente);
-    }
-
     const [rows] = await db.query(
-      `
-        SELECT
-          a.*,
-          u.nome AS tutor,
-          c.telefone AS telefone_tutor
-        FROM animais a
-        JOIN clientes c ON c.id_cliente = a.id_cliente
-        JOIN usuarios u ON u.id_usuario = c.id_usuario
-        ${where}
-        ORDER BY a.nome
-      `,
-      params
+      "SELECT * FROM listar_animais(?::tipo_usuario, ?::bigint)",
+      [req.user.tipo_usuario, req.user.id_cliente || null]
     );
     res.json(rows);
   } catch (error) {
@@ -859,27 +822,9 @@ router.put("/procedimentos/:id", auth, allow("admin"), async (req, res) => {
 
 router.get("/atendimentos", auth, async (req, res) => {
   try {
-    const params = [];
-    let where = "WHERE 1 = 1";
-
-    if (req.user.tipo_usuario === "cliente") {
-      where += " AND id_cliente = ?";
-      params.push(req.user.id_cliente);
-    }
-
-    if (req.user.tipo_usuario === "veterinario") {
-      where += " AND id_veterinario = ?";
-      params.push(req.user.id_veterinario);
-    }
-
     const [rows] = await db.query(
-      `
-        SELECT *
-        FROM vw_agenda_atendimentos
-        ${where}
-        ORDER BY inicio
-      `,
-      params
+      "SELECT * FROM listar_atendimentos(?::tipo_usuario, ?::bigint, ?::bigint)",
+      [req.user.tipo_usuario, req.user.id_cliente || null, req.user.id_veterinario || null]
     );
     res.json(rows);
   } catch (error) {
@@ -1024,40 +969,9 @@ router.patch("/atendimentos/:id/valores", auth, allow("admin", "veterinario"), a
 
 router.get("/prontuarios", auth, async (req, res) => {
   try {
-    const params = [];
-    let where = "WHERE 1 = 1";
-
-    if (req.user.tipo_usuario === "cliente") {
-      where += " AND at.id_cliente = ? AND p.visivel_para_cliente = true";
-      params.push(req.user.id_cliente);
-    }
-
-    if (req.user.tipo_usuario === "veterinario") {
-      where += " AND p.id_veterinario = ?";
-      params.push(req.user.id_veterinario);
-    }
-
     const [rows] = await db.query(
-      `
-        SELECT
-          p.*,
-          an.nome AS animal,
-          ua.nome AS tutor,
-          uv.nome AS veterinario,
-          at.inicio,
-          pr.nome AS procedimento
-        FROM prontuarios p
-        JOIN atendimentos at ON at.id_atendimento = p.id_atendimento
-        JOIN animais an ON an.id_animal = p.id_animal
-        JOIN clientes c ON c.id_cliente = at.id_cliente
-        JOIN usuarios ua ON ua.id_usuario = c.id_usuario
-        JOIN veterinarios v ON v.id_veterinario = p.id_veterinario
-        JOIN usuarios uv ON uv.id_usuario = v.id_usuario
-        JOIN procedimentos pr ON pr.id_procedimento = at.id_procedimento
-        ${where}
-        ORDER BY p.criado_em DESC
-      `,
-      params
+      "SELECT * FROM listar_prontuarios(?::tipo_usuario, ?::bigint, ?::bigint)",
+      [req.user.tipo_usuario, req.user.id_cliente || null, req.user.id_veterinario || null]
     );
 
     res.json(rows);
@@ -1118,40 +1032,9 @@ router.get("/lembretes", auth, allow("admin", "veterinario", "cliente"), async (
   try {
     await generateAutomaticReminders();
 
-    const params = [];
-    let where = "";
-
-    if (req.user.tipo_usuario === "veterinario") {
-      where = `
-        WHERE EXISTS (
-          SELECT 1
-          FROM atendimentos at
-          WHERE at.id_atendimento = l.id_atendimento
-            AND at.id_veterinario = ?
-        )
-      `;
-      params.push(req.user.id_veterinario);
-    }
-
-    if (req.user.tipo_usuario === "cliente") {
-      where = `
-        WHERE l.id_cliente = ?
-          AND NOT (l.tipo = 'consulta_proxima' AND l.titulo LIKE 'Confirmar%')
-      `;
-      params.push(req.user.id_cliente);
-    }
-
     const [rows] = await db.query(
-      `
-        SELECT l.*, an.nome AS animal, u.nome AS tutor, c.telefone
-        FROM lembretes l
-        LEFT JOIN animais an ON an.id_animal = l.id_animal
-        LEFT JOIN clientes c ON c.id_cliente = l.id_cliente
-        LEFT JOIN usuarios u ON u.id_usuario = c.id_usuario
-        ${where}
-        ORDER BY l.status, l.data_prevista
-      `,
-      params
+      "SELECT * FROM listar_lembretes(?::tipo_usuario, ?::bigint, ?::bigint)",
+      [req.user.tipo_usuario, req.user.id_cliente || null, req.user.id_veterinario || null]
     );
     res.json(rows);
   } catch (error) {
@@ -1240,12 +1123,7 @@ router.get("/relatorios/historico-animal/:id", auth, allow("admin", "veterinario
 
 router.get("/relatorios/servicos", auth, allow("admin", "veterinario"), async (_req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT procedimento AS servico, COUNT(*)::int AS total
-      FROM vw_agenda_atendimentos
-      GROUP BY procedimento
-      ORDER BY total DESC
-    `);
+    const [rows] = await db.query("SELECT * FROM relatorio_servicos()");
     res.json(rows);
   } catch (error) {
     res.status(500).json({ erro: "Erro ao carregar relatorio", detalhes: error.message });
@@ -1254,12 +1132,7 @@ router.get("/relatorios/servicos", auth, allow("admin", "veterinario"), async (_
 
 router.get("/relatorios/veterinarios", auth, allow("admin"), async (_req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT veterinario, COUNT(*)::int AS total
-      FROM vw_agenda_atendimentos
-      GROUP BY veterinario
-      ORDER BY total DESC
-    `);
+    const [rows] = await db.query("SELECT * FROM relatorio_veterinarios()");
     res.json(rows);
   } catch (error) {
     res.status(500).json({ erro: "Erro ao carregar relatorio", detalhes: error.message });

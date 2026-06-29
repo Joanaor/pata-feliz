@@ -732,6 +732,22 @@ router.get("/relatorios/historico-animal/:id", auth, async (req, res) => {
 });
 \end{lstlisting}
 
+Além do histórico clínico, as buscas principais do sistema também foram movidas para funções armazenadas no PostgreSQL. Dessa forma, o backend deixa de montar consultas extensas para listagens e relatórios, passando apenas os parâmetros de perfil do usuário e recebendo o resultado já filtrado pelo banco.
+
+\begin{lstlisting}[style=codigo,language=JavaScript,caption={Chamadas de buscas implementadas como funções armazenadas}]
+db.query(
+  "SELECT * FROM listar_atendimentos(?::tipo_usuario, ?::bigint, ?::bigint)",
+  [req.user.tipo_usuario, req.user.id_cliente || null, req.user.id_veterinario || null]
+);
+
+db.query(
+  "SELECT * FROM listar_prontuarios(?::tipo_usuario, ?::bigint, ?::bigint)",
+  [req.user.tipo_usuario, req.user.id_cliente || null, req.user.id_veterinario || null]
+);
+
+db.query("SELECT * FROM relatorio_servicos()");
+\end{lstlisting}
+
 \subsection{Uso dos Comandos SELECT, INSERT, UPDATE e DELETE}
 
 \begin{longtable}{p{3cm}p{5cm}p{6cm}}
@@ -770,6 +786,13 @@ db.query("DELETE FROM lembretes WHERE id_lembrete = ?");
 \texttt{set\_atualizado\_em()} & Atualiza automaticamente o campo \texttt{atualizado\_em}. \\
 \texttt{gerar\_lembretes\_automaticos()} & Gera lembretes automáticos com base em consultas, vacinas e animais sem atendimento. \\
 \texttt{buscar\_historico\_animal(id)} & Retorna histórico clínico de um animal, com parâmetro. \\
+\texttt{listar\_clientes()} & Lista tutores com total de animais por meio de junções. \\
+\texttt{listar\_animais(tipo, cliente)} & Lista animais e aplica filtro automático para o perfil tutor. \\
+\texttt{listar\_atendimentos(tipo, cliente, veterinario)} & Retorna a agenda filtrada conforme o perfil logado. \\
+\texttt{listar\_prontuarios(tipo, cliente, veterinario)} & Retorna prontuários visíveis conforme permissão do perfil. \\
+\texttt{listar\_lembretes(tipo, cliente, veterinario)} & Retorna lembretes filtrados por administrador, veterinário ou tutor. \\
+\texttt{relatorio\_servicos()} & Agrupa atendimentos por procedimento para relatório. \\
+\texttt{relatorio\_veterinarios()} & Agrupa atendimentos por veterinário para relatório administrativo. \\
 \texttt{disparar\_geracao\_lembretes()} & Função chamada por triggers para executar a geração automática de lembretes. \\
 \texttt{trg\_atendimentos\_gerar\_lembretes} & Dispara após inserções ou atualizações relevantes em atendimentos. \\
 \texttt{trg\_vacinas\_gerar\_lembretes} & Dispara após inserções ou atualizações relevantes em vacinas aplicadas. \\
