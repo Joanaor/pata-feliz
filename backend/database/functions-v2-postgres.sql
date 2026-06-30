@@ -548,6 +548,21 @@ RETURNS TABLE (
   ORDER BY total DESC;
 $$ LANGUAGE sql STABLE;
 
+CREATE OR REPLACE PROCEDURE atualizar_status_lembrete(
+  p_id_lembrete BIGINT,
+  p_status status_lembrete,
+  p_usuario BIGINT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE lembretes
+  SET status = p_status,
+      responsavel_usuario_id = p_usuario
+  WHERE id_lembrete = p_id_lembrete;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION disparar_geracao_lembretes()
 RETURNS TRIGGER AS $$
 BEGIN

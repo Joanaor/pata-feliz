@@ -73,8 +73,13 @@
   \large Sistema Web para Clínica Veterinária com PostgreSQL
 }
 \author{
-  Grupo: \underline{\hspace{8cm}}\\
-  Disciplina: Banco de Dados II
+  Gabriel de Jesus Moraes Mauricio\\
+  Joana de Oliveira Rocha\\
+  Matheus de Moura Almeida Neri\\
+  Thais Pereira Carvalho\\
+  Vicente Alves Cordeiro Junior\\[0.4cm]
+  Professor: Áthila Rocha Trindade\\
+  Matéria: Banco de Dados 2
 }
 \date{Diamantina -- MG\\2026}
 
@@ -205,6 +210,115 @@ O banco de dados é relacional e possui mais de uma estrutura de armazenamento, 
 
 \subsection{Diagrama Visual do Banco}
 
+\noindent Para evitar sobreposição visual, o modelo foi dividido em três diagramas menores: identidade e agenda, registros clínicos e automações de apoio.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tikzpicture}[
+  entity/.style={
+    draw,
+    rectangle split,
+    rectangle split parts=2,
+    rounded corners,
+    fill=white,
+    text width=3.7cm,
+    align=left,
+    font=\small
+  },
+  rel/.style={-{Latex[length=2.5mm]}, thick, color=pataDark},
+  note/.style={font=\scriptsize, fill=white, inner sep=1pt}
+]
+\node[entity] (usuarios) {\textbf{usuarios}\nodepart{second}PK id\_usuario\\nome, email, cpf\\senha\_hash\\tipo\_usuario};
+\node[entity, below left=1.3cm and 1.2cm of usuarios] (clientes) {\textbf{clientes}\nodepart{second}PK id\_cliente\\FK id\_usuario\\telefone, endereço\\observações};
+\node[entity, below right=1.3cm and 1.2cm of usuarios] (veterinarios) {\textbf{veterinarios}\nodepart{second}PK id\_veterinario\\FK id\_usuario\\crmv, especialidade\\telefone, ativo};
+\node[entity, below=1.5cm of clientes] (animais) {\textbf{animais}\nodepart{second}PK id\_animal\\FK id\_cliente\\nome, espécie, raça\\sexo, peso, ativo};
+\node[entity, below=1.5cm of veterinarios] (procedimentos) {\textbf{procedimentos}\nodepart{second}PK id\_procedimento\\nome, tipo\\duração padrão\\preço base};
+\node[entity, below right=1.5cm and 0.2cm of animais] (atendimentos) {\textbf{atendimentos}\nodepart{second}PK id\_atendimento\\FK animal, cliente\\FK veterinário\\FK procedimento\\início, fim, status\\valor total};
+\node[entity, right=1.3cm of veterinarios] (bloqueios) {\textbf{bloqueios\_agenda}\nodepart{second}PK id\_bloqueio\\FK veterinário opcional\\início, fim\\motivo, criado\_por};
+\draw[rel] (clientes) -- node[note]{1:1} (usuarios);
+\draw[rel] (veterinarios) -- node[note]{1:1} (usuarios);
+\draw[rel] (animais) -- node[note]{N:1} (clientes);
+\draw[rel] (atendimentos) -- node[note]{N:1} (animais);
+\draw[rel] (atendimentos) -- node[note]{N:1} (clientes);
+\draw[rel] (atendimentos) -- node[note]{N:1} (veterinarios);
+\draw[rel] (atendimentos) -- node[note]{N:1} (procedimentos);
+\draw[rel] (bloqueios) -- node[note]{N:1 opcional} (veterinarios);
+\end{tikzpicture}
+}
+\caption{Modelo principal: usuários, perfis, animais, procedimentos e agenda}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.95\textwidth}{!}{
+\begin{tikzpicture}[
+  entity/.style={
+    draw,
+    rectangle split,
+    rectangle split parts=2,
+    rounded corners,
+    fill=white,
+    text width=3.7cm,
+    align=left,
+    font=\small
+  },
+  rel/.style={-{Latex[length=2.5mm]}, thick, color=pataDark},
+  note/.style={font=\scriptsize, fill=white, inner sep=1pt}
+]
+\node[entity] (animais) {\textbf{animais}\nodepart{second}PK id\_animal\\FK id\_cliente\\nome, espécie\\peso atual};
+\node[entity, right=1.7cm of animais] (atendimentos) {\textbf{atendimentos}\nodepart{second}PK id\_atendimento\\FK animal\\FK veterinário\\FK procedimento\\início, status};
+\node[entity, right=1.7cm of atendimentos] (veterinarios) {\textbf{veterinarios}\nodepart{second}PK id\_veterinario\\FK id\_usuario\\crmv\\especialidade};
+\node[entity, below=1.4cm of atendimentos] (prontuarios) {\textbf{prontuarios}\nodepart{second}PK id\_prontuario\\FK atendimento\\FK animal\\FK veterinário\\diagnóstico\\prescrição};
+\node[entity, below=1.4cm of animais] (pesos) {\textbf{historico\_pesos}\nodepart{second}PK id\_peso\\FK animal\\FK veterinário\\peso, data};
+\node[entity, below=1.4cm of veterinarios] (vacinas) {\textbf{vacinas\_aplicadas}\nodepart{second}PK id\_vacina\\FK animal\\FK atendimento\\FK procedimento\\próxima dose};
+\draw[rel] (atendimentos) -- node[note]{N:1} (animais);
+\draw[rel] (atendimentos) -- node[note]{N:1} (veterinarios);
+\draw[rel] (prontuarios) -- node[note]{1:1} (atendimentos);
+\draw[rel] (prontuarios) -- node[note]{N:1} (animais);
+\draw[rel] (prontuarios) -- node[note]{N:1} (veterinarios);
+\draw[rel] (pesos) -- node[note]{N:1} (animais);
+\draw[rel] (pesos) -- node[note]{N:1} (veterinarios);
+\draw[rel] (vacinas) -- node[note]{N:1} (animais);
+\draw[rel] (vacinas) -- node[note]{N:1} (atendimentos);
+\end{tikzpicture}
+}
+\caption{Modelo clínico: prontuários, vacinas e histórico de pesos}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.95\textwidth}{!}{
+\begin{tikzpicture}[
+  entity/.style={
+    draw,
+    rectangle split,
+    rectangle split parts=2,
+    rounded corners,
+    fill=white,
+    text width=3.9cm,
+    align=left,
+    font=\small
+  },
+  rel/.style={-{Latex[length=2.5mm]}, thick, color=pataDark},
+  note/.style={font=\scriptsize, fill=white, inner sep=1pt}
+]
+\node[entity] (procedimentos) {\textbf{procedimentos}\nodepart{second}PK id\_procedimento\\nome, tipo\\duração padrão\\preço base};
+\node[entity, right=1.7cm of procedimentos] (precos) {\textbf{historico\_precos}\nodepart{second}PK id\_historico\\FK procedimento\\preço anterior/novo\\alterado\_por};
+\node[entity, below=1.4cm of procedimentos] (esquemas) {\textbf{esquemas\_vacinais}\nodepart{second}PK id\_esquema\\nome, espécie\\descrição};
+\node[entity, right=1.7cm of esquemas] (etapas) {\textbf{etapas\_esquema}\nodepart{second}PK id\_etapa\\FK esquema\\FK procedimento\\intervalo, repetição};
+\node[entity, below=1.4cm of esquemas] (lembretes) {\textbf{lembretes}\nodepart{second}PK id\_lembrete\\FK animal, cliente\\FK atendimento\\tipo, prioridade\\status, data prevista};
+\node[entity, right=1.7cm of lembretes] (contatos) {\textbf{contatos\_lembrete}\nodepart{second}PK id\_contato\\FK lembrete\\realizado\_por\\canal, resultado};
+\draw[rel] (precos) -- node[note]{N:1} (procedimentos);
+\draw[rel] (etapas) -- node[note]{N:1} (esquemas);
+\draw[rel] (etapas) -- node[note]{N:1} (procedimentos);
+\draw[rel] (contatos) -- node[note]{N:1} (lembretes);
+\end{tikzpicture}
+}
+\caption{Modelo de apoio: preços, esquemas vacinais, etapas e lembretes}
+\end{figure}
+
+\iffalse
 \begin{landscape}
 \begin{figure}[H]
 \centering
@@ -382,6 +496,7 @@ O banco de dados é relacional e possui mais de uma estrutura de armazenamento, 
 \caption{Diagrama entidade-relacionamento resumido do sistema Pata Feliz}
 \end{figure}
 \end{landscape}
+\fi
 
 \subsection{Restrições Importantes}
 
@@ -674,9 +789,35 @@ JOIN usuarios uv ON uv.id_usuario = v.id_usuario
 JOIN procedimentos p ON p.id_procedimento = at.id_procedimento;
 \end{lstlisting}
 
-\subsection{Stored Procedure ou Function com Parâmetro}
+\subsection{Stored Procedure e Function com Parâmetro}
 
-No PostgreSQL, foi utilizada uma função armazenada em PL/pgSQL. Ela recebe o identificador do animal como parâmetro e retorna seu histórico clínico.
+No PostgreSQL, o sistema utiliza uma procedure real e também funções armazenadas. A procedure \texttt{atualizar\_status\_lembrete} recebe o identificador do lembrete, o novo status e o usuário responsável. Ela é chamada pelo backend com \texttt{CALL}, atendendo diretamente ao requisito de stored procedure com passagem de parâmetro.
+
+\begin{lstlisting}[style=codigo,language=SQL,caption={Procedure armazenada com parâmetros}]
+CREATE OR REPLACE PROCEDURE atualizar_status_lembrete(
+  p_id_lembrete BIGINT,
+  p_status status_lembrete,
+  p_usuario BIGINT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE lembretes
+  SET status = p_status,
+      responsavel_usuario_id = p_usuario
+  WHERE id_lembrete = p_id_lembrete;
+END;
+$$;
+\end{lstlisting}
+
+\begin{lstlisting}[style=codigo,language=JavaScript,caption={Chamada da procedure pelo backend}]
+db.query(
+  "CALL atualizar_status_lembrete(?::bigint, ?::status_lembrete, ?::bigint)",
+  [req.params.id, req.body.status, req.user.id_usuario]
+);
+\end{lstlisting}
+
+Além da procedure, foi utilizada uma função armazenada em PL/pgSQL. Ela recebe o identificador do animal como parâmetro e retorna seu histórico clínico.
 
 \begin{lstlisting}[style=codigo,language=SQL,caption={Função armazenada com parâmetro}]
 CREATE OR REPLACE FUNCTION buscar_historico_animal(p_id_animal BIGINT)
@@ -786,6 +927,7 @@ db.query("DELETE FROM lembretes WHERE id_lembrete = ?");
 \texttt{set\_atualizado\_em()} & Atualiza automaticamente o campo \texttt{atualizado\_em}. \\
 \texttt{gerar\_lembretes\_automaticos()} & Gera lembretes automáticos com base em consultas, vacinas e animais sem atendimento. \\
 \texttt{buscar\_historico\_animal(id)} & Retorna histórico clínico de um animal, com parâmetro. \\
+\texttt{atualizar\_status\_lembrete(id, status, usuario)} & Procedure real chamada com \texttt{CALL} para atualizar lembretes. \\
 \texttt{listar\_clientes()} & Lista tutores com total de animais por meio de junções. \\
 \texttt{listar\_animais(tipo, cliente)} & Lista animais e aplica filtro automático para o perfil tutor. \\
 \texttt{listar\_atendimentos(tipo, cliente, veterinario)} & Retorna a agenda filtrada conforme o perfil logado. \\

@@ -1,0 +1,342 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{listings}
+
+\usetikzlibrary{arrows.meta,positioning}
+
+\definecolor{pataGreen}{HTML}{0F766E}
+\definecolor{pataDark}{HTML}{102A2A}
+\definecolor{pataBlue}{HTML}{2563EB}
+\definecolor{pataGray}{HTML}{F3F4F6}
+\definecolor{codeBg}{HTML}{F8FAFC}
+\definecolor{codeBorder}{HTML}{CBD5E1}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamercolor{palette primary}{bg=pataGreen,fg=white}
+\setbeamercolor{palette secondary}{bg=pataDark,fg=white}
+\setbeamercolor{palette tertiary}{bg=pataBlue,fg=white}
+\setbeamercolor{frametitle}{bg=pataGreen,fg=white}
+\setbeamercolor{title}{fg=pataDark}
+\setbeamercolor{block title}{bg=pataGreen,fg=white}
+\setbeamercolor{block body}{bg=pataGray,fg=black}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{itemize item}{\color{pataGreen}$\blacktriangleright$}
+
+\lstdefinestyle{codigo}{
+  backgroundcolor=\color{codeBg},
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{codeBorder},
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2
+}
+
+\title[Sistema Pata Feliz]{Sistema de Informação Pata Feliz}
+\subtitle{Sistema Web para Clínica Veterinária com PostgreSQL}
+\author[Gabriel, Joana, Matheus, Thais e Vicente]{
+  Gabriel de Jesus Moraes Mauricio\\
+  Joana de Oliveira Rocha\\
+  Matheus de Moura Almeida Neri\\
+  Thais Pereira Carvalho\\
+  Vicente Alves Cordeiro Junior
+}
+\institute{
+  Banco de Dados 2\\
+  Professor: Áthila Rocha Trindade
+}
+\date{2026}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Objetivo do Sistema}
+  \begin{block}{Proposta}
+    Desenvolver um Sistema de Informação web para gestão de uma clínica veterinária, com persistência em banco de dados relacional e operações SQL integradas ao backend e ao frontend.
+  \end{block}
+
+  \begin{itemize}
+    \item Organizar tutores, animais, veterinários, procedimentos e atendimentos.
+    \item Controlar agenda, bloqueios, prontuários e lembretes automáticos.
+    \item Demonstrar conceitos de Banco de Dados 2 na aplicação real.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Perfis de Usuário}
+  \begin{columns}[T]
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Administrador}
+        Gerencia clientes, animais, veterinários, procedimentos, agenda, bloqueios, lembretes e relatórios.
+      \end{block}
+    \end{column}
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Veterinário}
+        Visualiza agenda, acessa dados do animal e tutor, altera status, registra prontuários e valores adicionais.
+      \end{block}
+    \end{column}
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Tutor}
+        Cadastra animais, agenda atendimentos, acompanha consultas, visualiza prontuários permitidos e lembretes.
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Requisitos Funcionais}
+  \begin{itemize}
+    \item Login por e-mail ou CPF e senha.
+    \item Controle de permissões por perfil.
+    \item Cadastro e edição de clientes, animais, veterinários e procedimentos.
+    \item Agendamento de atendimentos com validação de data, horário e disponibilidade.
+    \item Registro de prontuários vinculados ao atendimento, animal e veterinário.
+    \item Geração de lembretes automáticos para consultas, vacinas e animais sem atendimento recente.
+    \item Relatórios de serviços, veterinários e histórico do animal.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Arquitetura}
+  \centering
+  \begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=pataGray, minimum width=3.5cm, minimum height=1.15cm, align=center},
+    arrow/.style={-{Latex[length=3mm]}, thick}
+  ]
+    \node[box] (front) {Frontend\\HTML, CSS, JavaScript};
+    \node[box, right=1.1cm of front] (api) {Backend\\Node.js + Express};
+    \node[box, right=1.1cm of api] (db) {PostgreSQL\\Tabelas, Views, Functions, Triggers};
+    \draw[arrow] (front) -- node[above]{HTTP/JSON} (api);
+    \draw[arrow] (api) -- node[above]{SQL} (db);
+    \draw[arrow] (db) -- node[below]{Registros} (api);
+    \draw[arrow] (api) -- node[below]{JSON} (front);
+  \end{tikzpicture}
+
+  \vspace{0.7cm}
+  \begin{itemize}
+    \item Frontend consome a API.
+    \item Backend aplica autenticação, autorização e regras de negócio.
+    \item Banco mantém integridade, consultas, funções e automações.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Modelo de Dados}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \begin{itemize}
+        \item \texttt{usuarios}
+        \item \texttt{clientes}
+        \item \texttt{veterinarios}
+        \item \texttt{animais}
+        \item \texttt{procedimentos}
+        \item \texttt{atendimentos}
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{itemize}
+        \item \texttt{prontuarios}
+        \item \texttt{vacinas\_aplicadas}
+        \item \texttt{lembretes}
+        \item \texttt{bloqueios\_agenda}
+        \item \texttt{historico\_precos}
+        \item \texttt{historico\_pesos}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+
+  \begin{block}{Requisito atendido}
+    O sistema manipula dados armazenados em mais de uma estrutura de armazenamento, com múltiplas tabelas relacionadas por chaves estrangeiras.
+  \end{block}
+\end{frame}
+
+\begin{frame}{CRUD no Sistema}
+  \begin{table}
+    \centering
+    \begin{tabular}{lll}
+      \toprule
+      Comando & Exemplo no sistema & Finalidade \\
+      \midrule
+      \texttt{SELECT} & Listagens e relatórios & Consultar dados \\
+      \texttt{INSERT} & Cadastro de tutores e atendimentos & Inserir dados \\
+      \texttt{UPDATE} & Edição de perfil e status & Atualizar dados \\
+      \texttt{DELETE} & Exclusão de lembretes e bloqueios & Remover dados \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \begin{block}{Integração}
+    As operações são chamadas pelo backend Express e persistidas no PostgreSQL.
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Trecho de Código: Conexão com o Banco}
+  \begin{lstlisting}[style=codigo,language=JavaScript]
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT || 5432
+});
+
+await pool.query(sql, params);
+  \end{lstlisting}
+
+  \begin{itemize}
+    \item Trecho localizado em \texttt{backend/db.js}.
+    \item Uso de variáveis de ambiente para credenciais.
+    \item Biblioteca \texttt{pg} para PostgreSQL.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Transações}
+  \begin{lstlisting}[style=codigo,language=JavaScript]
+await conn.beginTransaction();
+
+await conn.query("INSERT INTO usuarios (...) VALUES (...)");
+await conn.query("INSERT INTO clientes (...) VALUES (...)");
+
+await conn.commit();
+  \end{lstlisting}
+
+  \begin{block}{Onde foi usado}
+    Cadastro e edição de clientes, veterinários e perfil, pois envolvem mais de uma tabela.
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Trecho de Código: Consulta com Junções}
+  \begin{lstlisting}[style=codigo,language=SQL]
+SELECT
+  at.id_atendimento,
+  an.nome AS animal,
+  uc.nome AS tutor,
+  uv.nome AS veterinario,
+  p.nome AS procedimento
+FROM atendimentos at
+JOIN animais an ON an.id_animal = at.id_animal
+JOIN clientes c ON c.id_cliente = at.id_cliente
+JOIN usuarios uc ON uc.id_usuario = c.id_usuario
+JOIN veterinarios v ON v.id_veterinario = at.id_veterinario
+JOIN usuarios uv ON uv.id_usuario = v.id_usuario
+JOIN procedimentos p ON p.id_procedimento = at.id_procedimento;
+\end{lstlisting}
+\begin{itemize}
+  \item Consulta usada na agenda e nas funções de listagem.
+  \item Relaciona atendimentos, animais, tutores, veterinários e procedimentos.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Trecho de Código: Procedure e Functions}
+  \begin{itemize}
+    \item Procedure real: \texttt{atualizar\_status\_lembrete(id, status, usuario)}
+    \item \texttt{buscar\_historico\_animal(id)}
+    \item \texttt{listar\_clientes()}
+    \item \texttt{listar\_animais(tipo, cliente)}
+    \item \texttt{listar\_atendimentos(tipo, cliente, veterinario)}
+    \item \texttt{listar\_prontuarios(tipo, cliente, veterinario)}
+    \item \texttt{listar\_lembretes(tipo, cliente, veterinario)}
+    \item \texttt{relatorio\_servicos()} e \texttt{relatorio\_veterinarios()}
+  \end{itemize}
+
+  \begin{lstlisting}[style=codigo,language=JavaScript]
+db.query(
+  "CALL atualizar_status_lembrete(?::bigint, ?::status_lembrete, ?::bigint)",
+  [idLembrete, status, idUsuario]
+);
+
+db.query(
+  "SELECT * FROM listar_atendimentos(?::tipo_usuario, ?::bigint, ?::bigint)",
+  [tipoUsuario, idCliente, idVeterinario]
+);
+  \end{lstlisting}
+\begin{itemize}
+  \item Chamada da procedure em \texttt{backend/routes/v2.js}.
+  \item Functions usadas para listagens e relatórios do sistema.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Triggers e Automações}
+  \begin{lstlisting}[style=codigo,language=SQL]
+CREATE TRIGGER trg_atendimentos_gerar_lembretes
+AFTER INSERT OR UPDATE OF inicio, fim, status,
+  id_animal, id_cliente, id_procedimento
+ON atendimentos
+FOR EACH STATEMENT
+EXECUTE FUNCTION disparar_geracao_lembretes();
+  \end{lstlisting}
+
+  \begin{itemize}
+    \item Atualização automática do campo \texttt{atualizado\_em}.
+    \item Geração automática de lembretes após mudanças em atendimentos e vacinas.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Regras de Agendamento}
+  \begin{itemize}
+    \item Não permite atendimento no passado.
+    \item Não permite agendamento com mais de um ano de antecedência.
+    \item Segunda a sexta: 08:00 às 18:00.
+    \item Sábado: 08:00 às 12:00.
+    \item Domingo indisponível.
+    \item Bloqueios de agenda impedem novos atendimentos no período.
+    \item Restrição \texttt{EXCLUDE USING GIST} evita choque para o mesmo veterinário.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Demonstração}
+  \begin{enumerate}
+    \item Login no sistema com usuário de teste.
+    \item Visualização do dashboard por perfil.
+    \item Cadastro ou edição de animal/procedimento.
+    \item Criação de atendimento na agenda.
+    \item Registro de prontuário.
+    \item Visualização de lembretes e relatórios.
+  \end{enumerate}
+
+  \begin{block}{Dados de exemplo}
+    Usuários fictícios foram inseridos via seed PostgreSQL. Senha padrão: \texttt{123456}.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Como Executar}
+  \begin{itemize}
+    \item Criar banco PostgreSQL: \texttt{pata\_feliz\_v2}.
+    \item Executar \texttt{schema-v2-postgres.sql}.
+    \item Executar \texttt{seed-v2-postgres.sql}.
+    \item Atualizar funções com \texttt{functions-v2-postgres.sql}, se necessário.
+    \item Rodar backend com \texttt{npm start}.
+    \item Abrir o frontend no navegador.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Conclusão}
+  \begin{block}{Requisitos atendidos}
+    O Pata Feliz implementa um Sistema de Informação web funcional com banco relacional, CRUD completo, transações, consultas com junções, funções armazenadas com parâmetros, triggers e múltiplas tabelas relacionadas.
+  \end{block}
+
+  \begin{itemize}
+    \item O sistema resolve uma necessidade prática de clínica veterinária.
+    \item O banco de dados participa das regras de integridade e automação.
+    \item A aplicação demonstra integração entre frontend, backend e PostgreSQL.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \centering
+  {\Huge Obrigado!}
+
+  \vspace{0.8cm}
+  {\Large Dúvidas?}
+\end{frame}
+
+\end{document}

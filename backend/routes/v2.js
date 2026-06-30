@@ -1050,8 +1050,8 @@ router.patch("/lembretes/:id/status", auth, allow("admin", "veterinario"), async
     }
 
     await db.query(
-      "UPDATE lembretes SET status = ?, responsavel_usuario_id = ? WHERE id_lembrete = ?",
-      [req.body.status, req.user.id_usuario, req.params.id]
+      "CALL atualizar_status_lembrete(?::bigint, ?::status_lembrete, ?::bigint)",
+      [req.params.id, req.body.status, req.user.id_usuario]
     );
 
     res.json({ mensagem: "Lembrete atualizado" });
